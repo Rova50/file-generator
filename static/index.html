@@ -1,0 +1,29 @@
+<!-- Ajouter cette option dans la section Options -->
+<div class="card">
+    <h2>3. Options</h2>
+    <div class="options">
+        <label class="checkbox">
+            <input type="checkbox" id="overwrite" checked>
+            <span>Écraser les fichiers existants</span>
+        </label>
+        <label class="checkbox">
+            <input type="checkbox" id="createContent" checked>
+            <span>Générer du contenu pour les fichiers</span>
+        </label>
+        <label class="checkbox">
+            <input type="checkbox" id="dryRun">
+            <span>Simulation (ne pas créer, seulement afficher)</span>
+        </label>
+        <label class="checkbox">
+            <input type="checkbox" id="createZip">
+            <span>Créer une archive ZIP</span>
+        </label>
+    </div>
+</div>
+
+<!-- Ajouter le bouton de téléchargement dans la section de sortie -->
+<div class="output-actions">
+    <button class="btn btn-small" id="copyOutputBtn">📋 Copier</button>
+    <button class="btn btn-small" id="downloadZipBtn" style="display: none;">📦 Télécharger ZIP</button>
+    <button class="btn btn-small" id="clearOutputBtn">🗑️ Effacer</button>
+</div>
