@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(docker-compose up:*)"
+      "Bash(docker-compose up:*)",
+      "Bash(curl -s http://localhost:5000/api/health)",
+      "Bash(curl -s -X POST http://localhost:5000/api/parse-text -H \"Content-Type: application/json\" -d '{\"\"\"\"content\"\"\"\":\"\"\"\"src/\\\\n├── assets/\\\\n│   ├── css/\\\\n│   └── js/\\\\n├── components/\\\\n│   ├── HeaderComponent.vue\\\\n│   └── App.vue\\\\n├── App.vue\\\\n└── main.js\"\"\"\"}')",
+      "Bash(python -c \"import sys,json; [print\\(i[''''type''''],i[''''path'''']\\) for i in json.load\\(sys.stdin\\)[''''structure'''']]\")",
+      "Bash(curl -s -X POST http://localhost:5000/api/parse-text -H \"Content-Type: application/json\" -d \"{\"\"content\"\":\"\"src/\\\\n├── assets/\\\\n│   ├── css/\\\\n│   └── js/\\\\n├── components/\\\\n│   ├── HeaderComponent.vue\\\\n│   └── App.vue\\\\n├── App.vue\\\\n└── main.js\"\"}\")"
     ]
   }
 }

@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     pip install gunicorn
 
 # Copier le code de l'application
-COPY server.py .
+COPY server.py tree_parser.py generator.py ./
 COPY static/ ./static/
 
 # Donner les permissions
