@@ -19,9 +19,9 @@ import zipfile
 import tempfile
 
 # Configuration
-app = Flask(__name__, 
+app = Flask(__name__,
             static_folder='static',
-            static_url_path='')
+            static_url_path='/static')
 CORS(app)
 
 # Configuration des dossiers
@@ -53,10 +53,22 @@ class StructureParser:
         """Nettoie le nom d'un fichier/dossier"""
         # Enlever les caractères d'arborescence
         name = re.sub(r'^[│├└─\s]+', '', name)
+        # Enlever les commentaires # style
+        name = re.sub(r'\s*#.*$', '', name)
         # Enlever les commentaires entre parenthèses
         name = re.sub(r'\s*\([^)]*\)\s*$', '', name)
         # Enlever les espaces
         return name.strip()
+
+    def extract_comment(self, line):
+        """Extrait le commentaire d'une ligne (# style ou parenthèses), s'il existe"""
+        # Priorité au commentaire # style
+        hash_match = re.search(r'#\s*(.+)$', line)
+        if hash_match:
+            return hash_match.group(1).strip()
+        # Fallback sur les parenthèses
+        paren_match = re.search(r'\(([^)]*)\)', line)
+        return paren_match.group(1).strip() if paren_match else None
     
     def is_directory(self, name, line):
         """Détermine si un élément est un dossier"""
@@ -72,14 +84,10 @@ class StructureParser:
         if re.search(r'[│├└]\s*[a-zA-Z]+\/$', line):
             return True
         
-        # Si le nom n'a pas d'extension et n'est pas un fichier spécial
-        special_files = ['App', 'main', 'index', 'router', 'store']
-        if '.' not in name and name not in special_files:
-            # Vérifier que ce n'est pas un fichier avec une extension connue
-            if not any(name.endswith(ext) for ext in ['.vue', '.js', '.css', 
-                                                      '.html', '.json', '.scss']):
-                return True
-        
+        # Si le nom n'a pas d'extension → traiter comme dossier (comportement par défaut)
+        if '.' not in name:
+            return True
+
         return False
     
     def parse(self, content):
@@ -99,11 +107,14 @@ class StructureParser:
             indent_chars = indent_match.group(0) if indent_match else ''
             level = indent_chars.count('│')
             
+            # Extraire le commentaire avant nettoyage
+            comment = self.extract_comment(line)
+
             # Nettoyer le nom
             name = self.clean_name(line)
             if not name:
                 continue
-            
+
             # Déterminer si c'est un dossier
             is_dir = self.is_directory(name, line)
             
@@ -129,7 +140,8 @@ class StructureParser:
                     'type': 'directory',
                     'path': path,
                     'name': name,
-                    'level': level
+                    'level': level,
+                    'comment': comment
                 })
             else:
                 # C'est un fichier
@@ -141,7 +153,8 @@ class StructureParser:
                     'path': path,
                     'name': name,
                     'extension': ext,
-                    'level': level
+                    'level': level,
+                    'comment': comment
                 })
             
             last_level = level
@@ -418,7 +431,10 @@ def generate():
         if options.get('createZip', False) and results['success']:
             zip_path = generator.create_zip_archive(structure)
             results['zipFile'] = str(zip_path)
-        
+
+        # Toujours retourner le chemin généré pour actions post-génération
+        results['targetPath'] = str(Path(target_path).resolve())
+
         return jsonify(results)
     
     except Exception as e:
@@ -445,6 +461,155 @@ def preview():
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/parse-text', methods=['POST'])
+def parse_text():
+    """Parse du texte collé directement"""
+    try:
+        data = request.get_json()
+        if not data or 'content' not in data:
+            return jsonify({'error': 'Contenu non fourni'}), 400
+
+        content = data['content'].strip()
+        if not content:
+            return jsonify({'error': 'Le contenu est vide'}), 400
+
+        parser = StructureParser()
+        structure = parser.parse(content)
+
+        dirs = [item for item in structure if item['type'] == 'directory']
+        files = [item for item in structure if item['type'] == 'file']
+
+        return jsonify({
+            'success': True,
+            'structure': structure,
+            'stats': {
+                'total_items': len(structure),
+                'directories': len(dirs),
+                'files': len(files),
+                'file_size': len(content)
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Erreur lors du parsing du texte: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/create-zip', methods=['POST'])
+def create_zip():
+    """Crée un ZIP d'un dossier généré existant"""
+    try:
+        data = request.get_json()
+        if not data or 'targetPath' not in data:
+            return jsonify({'error': 'Chemin cible non fourni'}), 400
+
+        target_path = Path(data['targetPath']).resolve()
+        generated_root = Path(GENERATED_FOLDER).resolve()
+
+        # Sécurité : le chemin doit être sous generated/
+        if not str(target_path).startswith(str(generated_root)):
+            return jsonify({'error': 'Chemin non autorisé'}), 403
+
+        if not target_path.exists():
+            return jsonify({'error': 'Dossier introuvable'}), 404
+
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        zip_filename = f"structure_{timestamp}.zip"
+        zip_path = generated_root / zip_filename
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for file in target_path.rglob('*'):
+                if file.is_file():
+                    zipf.write(file, file.relative_to(target_path))
+
+        return jsonify({
+            'success': True,
+            'zipFile': str(zip_path),
+            'zipFilename': zip_filename
+        })
+
+    except Exception as e:
+        logger.error(f"Erreur création ZIP: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/delete-folder', methods=['POST'])
+def delete_folder():
+    """Supprime un dossier généré"""
+    try:
+        data = request.get_json()
+        if not data or 'targetPath' not in data:
+            return jsonify({'error': 'Chemin cible non fourni'}), 400
+
+        target_path = Path(data['targetPath']).resolve()
+        generated_root = Path(GENERATED_FOLDER).resolve()
+
+        # Sécurité : refuser si hors de generated/ ou si c'est la racine elle-même
+        if not str(target_path).startswith(str(generated_root)):
+            return jsonify({'error': 'Chemin non autorisé'}), 403
+        if target_path == generated_root:
+            return jsonify({'error': 'Impossible de supprimer le dossier racine'}), 403
+
+        if not target_path.exists():
+            return jsonify({'success': True, 'message': 'Dossier déjà supprimé'})
+
+        shutil.rmtree(target_path)
+        return jsonify({'success': True, 'message': f'Dossier supprimé : {target_path.name}'})
+
+    except Exception as e:
+        logger.error(f"Erreur suppression dossier: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/validate', methods=['POST'])
+def validate():
+    """Valide une structure sans créer de fichiers"""
+    try:
+        data = request.get_json()
+        if not data or 'structure' not in data:
+            return jsonify({'error': 'Structure non fournie'}), 400
+
+        structure = data['structure']
+        warnings = []
+
+        if not structure:
+            warnings.append('Structure vide')
+            return jsonify({'success': True, 'valid': False, 'warnings': warnings})
+
+        # Vérifier la profondeur max
+        max_depth = max((item['level'] for item in structure), default=0)
+        if max_depth > 10:
+            warnings.append(f'Profondeur excessive: {max_depth} niveaux (max recommandé: 10)')
+
+        # Vérifier les chemins dupliqués
+        paths = [item['path'] for item in structure]
+        duplicates = list({p for p in paths if paths.count(p) > 1})
+        if duplicates:
+            warnings.append(f"Chemins dupliqués: {', '.join(duplicates)}")
+
+        # Fichiers sans extension
+        no_ext = [i for i in structure if i['type'] == 'file' and not i.get('extension')]
+        if no_ext:
+            warnings.append(f"{len(no_ext)} fichier(s) sans extension détecté(s)")
+
+        dirs = [i for i in structure if i['type'] == 'directory']
+        files = [i for i in structure if i['type'] == 'file']
+
+        return jsonify({
+            'success': True,
+            'valid': len(warnings) == 0,
+            'warnings': warnings,
+            'stats': {
+                'total_items': len(structure),
+                'directories': len(dirs),
+                'files': len(files)
+            }
+        })
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/download/<path:filename>', methods=['GET'])
 def download(filename):

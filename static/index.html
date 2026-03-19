@@ -1,29 +1,613 @@
-<!-- Ajouter cette option dans la section Options -->
-<div class="card">
-    <h2>3. Options</h2>
-    <div class="options">
-        <label class="checkbox">
-            <input type="checkbox" id="overwrite" checked>
-            <span>Écraser les fichiers existants</span>
-        </label>
-        <label class="checkbox">
-            <input type="checkbox" id="createContent" checked>
-            <span>Générer du contenu pour les fichiers</span>
-        </label>
-        <label class="checkbox">
-            <input type="checkbox" id="dryRun">
-            <span>Simulation (ne pas créer, seulement afficher)</span>
-        </label>
-        <label class="checkbox">
-            <input type="checkbox" id="createZip">
-            <span>Créer une archive ZIP</span>
-        </label>
-    </div>
-</div>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Générateur de Structure de Fichiers</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css?v=5">
+    <style>
+        /* Styles supplémentaires pour l'interface */
+        .server-status {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-left: 1rem;
+        }
+        
+        .server-status.online {
+            background: #10b981;
+            color: white;
+        }
+        
+        .server-status.offline {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .file-stats {
+            margin-top: 1rem;
+            padding: 0.75rem;
+            background: #f3f4f6;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            color: #4b5563;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 0.5rem;
+            background: #e5e7eb;
+            border-radius: 0.25rem;
+            overflow: hidden;
+            margin: 1rem 0;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background: #6366f1;
+            transition: width 0.3s ease;
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: #1f2937;
+            color: white;
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            transform: translateY(100%);
+            opacity: 0;
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+        
+        .toast.success {
+            background: #10b981;
+        }
+        
+        .toast.error {
+            background: #ef4444;
+        }
+        
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+        
+        .modal.show {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 1rem;
+            padding: 2rem;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .modal-header h3 {
+            font-size: 1.25rem;
+            color: #1f2937;
+        }
+        
+        .modal-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #9ca3af;
+        }
+        
+        .modal-close:hover {
+            color: #4b5563;
+        }
+        
+        .history-item {
+            padding: 1rem;
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .history-item:hover {
+            border-color: #6366f1;
+            background: #f9fafb;
+        }
+        
+        .history-item-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+        
+        .history-item-date {
+            color: #6b7280;
+            font-size: 0.85rem;
+        }
+        
+        .history-item-stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.9rem;
+            color: #4b5563;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .badge.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .badge.warning {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .tooltip {
+            position: relative;
+            display: inline-block;
+        }
+        
+        .tooltip .tooltip-text {
+            visibility: hidden;
+            background: #1f2937;
+            color: white;
+            text-align: center;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem;
+            position: absolute;
+            z-index: 1;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            font-size: 0.85rem;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        
+        .keyboard-shortcut {
+            background: #f3f4f6;
+            border: 1px solid #e5e7eb;
+            padding: 0.2rem 0.5rem;
+            border-radius: 0.3rem;
+            font-family: 'JetBrains Mono', 'Fira Mono', 'Cascadia Code', monospace;
+            font-size: 0.78rem;
+            font-weight: 500;
+            color: #4b5563;
+            letter-spacing: 0.03em;
+            box-shadow: 0 1px 0 #d1d5db;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="display: flex; align-items: center; justify-content: center;">
+                <h1>📁 Générateur de Structure de Fichiers</h1>
+                <div id="serverStatus" class="server-status offline">Hors ligne</div>
+            </div>
+            <p>Créez une arborescence complète à partir d'un fichier texte</p>
+            <div style="margin-top: 1rem;">
+                <span class="keyboard-shortcut">Ctrl+O</span> Ouvrir un fichier
+                <span class="keyboard-shortcut" style="margin-left: 1rem;">Ctrl+G</span> Générer
+                <span class="keyboard-shortcut" style="margin-left: 1rem;">Ctrl+P</span> Prévisualiser
+            </div>
+        </header>
 
-<!-- Ajouter le bouton de téléchargement dans la section de sortie -->
-<div class="output-actions">
-    <button class="btn btn-small" id="copyOutputBtn">📋 Copier</button>
-    <button class="btn btn-small" id="downloadZipBtn" style="display: none;">📦 Télécharger ZIP</button>
-    <button class="btn btn-small" id="clearOutputBtn">🗑️ Effacer</button>
-</div>
+        <main>
+            <div class="input-section">
+                <!-- Carte de sélection du fichier -->
+                <div class="card">
+                    <h2>1. Fichier d'arborescence</h2>
+                    <div class="file-input-area" id="dropZone">
+                        <input type="file" id="treeFile" accept=".txt" hidden>
+                        <div class="file-input-content">
+                            <span class="icon">📄</span>
+                            <p>Glissez-déposez votre fichier input.txt ici</p>
+                            <p class="or">ou</p>
+                            <button class="btn btn-primary" id="selectFileBtn">Sélectionner un fichier</button>
+                        </div>
+                        <div class="file-info" id="fileInfo" style="display: none;">
+                            <span class="file-name"></span>
+                            <button class="btn-remove" id="removeFileBtn" title="Supprimer le fichier">×</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Aperçu du fichier -->
+                    <div class="file-preview" id="filePreview" style="display: none;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3>Aperçu du contenu :</h3>
+                            <div>
+                                <button class="btn btn-small" id="expandPreviewBtn" title="Agrandir">🔍</button>
+                                <button class="btn btn-small" id="copyPreviewBtn" title="Copier le contenu">📋</button>
+                            </div>
+                        </div>
+                        <pre id="fileContent"></pre>
+                        <div id="previewStats" class="file-stats"></div>
+                    </div>
+                    
+                    <!-- Coller directement -->
+                    <div class="paste-divider"><span>ou collez directement</span></div>
+                    <div class="paste-area">
+                        <textarea id="pasteContent" placeholder="Collez ou saisissez votre arborescence ici…
+
+src/
+├── assets/
+│   └── css/
+├── App.vue
+└── main.js"></textarea>
+                        <button class="btn btn-small btn-primary" id="parseTextBtn">⚡ Analyser</button>
+                    </div>
+
+                    <!-- Exemple de format -->
+                    <details class="example-format" style="margin-top: 1rem;">
+                        <summary style="color: #6366f1; cursor: pointer;">Voir un exemple de format</summary>
+                        <pre style="background: #f3f4f6; padding: 1rem; border-radius: 0.5rem; margin-top: 0.5rem; font-size: 0.85rem;">
+src/
+├── assets/
+│   ├── css/          (Copiez les fichiers CSS ici)
+│   └── js/           (Si nécessaire)
+├── components/
+│   ├── HeaderComponent.vue
+│   ├── SidebarComponent.vue
+│   └── App.vue
+├── App.vue
+└── main.js</pre>
+                    </details>
+                </div>
+
+                <!-- Carte de sélection du dossier -->
+                <div class="card">
+                    <h2>2. Dossier de destination</h2>
+                    <div class="folder-input-area">
+                        <input type="text" id="folderPath" placeholder="Chemin du dossier (ex: ./output ou /home/user/projet)">
+                        <button class="btn btn-secondary" id="browseFolderBtn">
+                            <span>📂</span> Parcourir
+                        </button>
+                    </div>
+                    <div class="folder-info" id="folderInfo" style="display: none;">
+                        <span class="folder-path"></span>
+                        <button class="btn-remove" id="removeFolderBtn" title="Supprimer le chemin">×</button>
+                    </div>
+                    
+                    <!-- Suggestions de chemins -->
+                    <div style="margin-top: 1rem;">
+                        <p style="font-size: 0.85rem; color: #6b7280; margin-bottom: 0.5rem;">Chemins suggérés :</p>
+                        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                            <button class="btn btn-small btn-outline suggest-path" data-path="./generated">./generated</button>
+                            <button class="btn btn-small btn-outline suggest-path" data-path="./output">./output</button>
+                            <button class="btn btn-small btn-outline suggest-path" data-path="../project">../project</button>
+                            <button class="btn btn-small btn-outline suggest-path" data-path="/tmp/structure">/tmp/structure</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Carte des options -->
+                <div class="card">
+                    <h2>3. Options</h2>
+                    <div class="options">
+                        <label class="checkbox tooltip">
+                            <input type="checkbox" id="overwrite" checked>
+                            <span>Écraser les fichiers existants</span>
+                            <span class="tooltip-text">Remplace les fichiers déjà présents</span>
+                        </label>
+                        <label class="checkbox tooltip">
+                            <input type="checkbox" id="createContent" checked>
+                            <span>Générer du contenu pour les fichiers</span>
+                            <span class="tooltip-text">Crée du contenu par défaut pour .vue, .js, .css</span>
+                        </label>
+                        <label class="checkbox tooltip">
+                            <input type="checkbox" id="dryRun">
+                            <span>Simulation (ne pas créer, seulement afficher)</span>
+                            <span class="tooltip-text">Affiche ce qui serait créé sans rien écrire</span>
+                        </label>
+                        <label class="checkbox tooltip">
+                            <input type="checkbox" id="createZip">
+                            <span>Créer une archive ZIP</span>
+                            <span class="tooltip-text">Génère un fichier .zip téléchargeable</span>
+                        </label>
+                        <label class="checkbox tooltip">
+                            <input type="checkbox" id="recursive">
+                            <span>Parcourir récursivement</span>
+                            <span class="tooltip-text">Crée tous les sous-dossiers automatiquement</span>
+                        </label>
+                        <label class="checkbox tooltip">
+                            <input type="checkbox" id="preserveComments">
+                            <span>Conserver les commentaires</span>
+                            <span class="tooltip-text">Garde les commentaires entre parenthèses</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Carte d'historique -->
+                <div class="card">
+                    <h2>📜 Historique des générations</h2>
+                    <div id="historyList" style="max-height: 200px; overflow-y: auto;">
+                        <p style="color: #9ca3af; text-align: center; padding: 1rem;">Aucun historique</p>
+                    </div>
+                    <button class="btn btn-small btn-outline" id="clearHistoryBtn" style="margin-top: 0.5rem; width: 100%;">
+                        🗑️ Effacer l'historique
+                    </button>
+                </div>
+            </div>
+
+            <!-- Barre de progression -->
+            <div id="progressContainer" style="display: none;">
+                <div class="progress-bar">
+                    <div class="progress-bar-fill" id="progressBar" style="width: 0%;"></div>
+                </div>
+                <p id="progressMessage" style="text-align: center; color: #6b7280; font-size: 0.9rem;"></p>
+            </div>
+
+            <!-- Boutons d'action -->
+            <div class="action-section">
+                <button class="btn btn-success" id="generateBtn" disabled>
+                    <span class="btn-icon">⚡</span>
+                    Générer la structure
+                </button>
+                <button class="btn btn-outline" id="previewBtn" disabled>
+                    <span class="btn-icon">👁️</span>
+                    Prévisualiser
+                </button>
+                <button class="btn btn-outline" id="validateBtn" disabled>
+                    <span class="btn-icon">✓</span>
+                    Valider la structure
+                </button>
+                <button class="btn btn-outline" id="historyBtn">
+                    <span class="btn-icon">📜</span>
+                    Historique
+                </button>
+            </div>
+
+            <!-- Section de résultat -->
+            <div class="output-section" id="outputSection" style="display: none;">
+                <div class="output-header">
+                    <h2>Résultat</h2>
+                    <div class="output-actions">
+                        <button class="btn btn-small" id="copyOutputBtn" title="Copier le résultat">📋 Copier</button>
+                        <button class="btn btn-small" id="downloadZipBtn" style="display: none;" title="Télécharger l'archive ZIP">📦 ZIP</button>
+                        <button class="btn btn-small" id="saveOutputBtn" style="display: none;" title="Sauvegarder le résultat">💾 Sauvegarder</button>
+                        <button class="btn btn-small" id="clearOutputBtn" title="Effacer le résultat">🗑️ Effacer</button>
+                    </div>
+                </div>
+                <div class="output-content" id="output"></div>
+                
+                <!-- Actions post-génération -->
+                <div id="folderActions" style="display: none;" class="folder-actions">
+                    <div class="folder-actions-path">
+                        <span class="folder-actions-label">📁 Dossier généré :</span>
+                        <code id="generatedPathDisplay"></code>
+                        <button class="btn-icon-only" id="copyPathBtn" title="Copier le chemin">📋</button>
+                    </div>
+                    <div class="folder-actions-buttons">
+                        <button class="btn btn-small btn-primary" id="createZipBtn">📦 Télécharger ZIP</button>
+                        <label class="checkbox" style="font-size:0.8rem;">
+                            <input type="checkbox" id="autoDeleteAfterZip">
+                            <span>Effacer après téléchargement</span>
+                        </label>
+                        <button class="btn btn-small btn-outline" id="deleteFolderBtn" style="color:#ef4444; border-color:#ef4444;">🗑️ Effacer le dossier</button>
+                    </div>
+                </div>
+
+                <!-- Statistiques détaillées -->
+                <div id="outputStats" style="margin-top: 1rem; padding: 1rem; background: #f9fafb; border-radius: 0.5rem; display: none;">
+                    <h3 style="font-size: 1rem; margin-bottom: 0.5rem;">Statistiques détaillées</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                        <div>
+                            <p style="color: #6b7280; font-size: 0.85rem;">Dossiers</p>
+                            <p style="font-size: 1.5rem; font-weight: bold; color: #6366f1;" id="statDirs">0</p>
+                        </div>
+                        <div>
+                            <p style="color: #6b7280; font-size: 0.85rem;">Fichiers</p>
+                            <p style="font-size: 1.5rem; font-weight: bold; color: #10b981;" id="statFiles">0</p>
+                        </div>
+                        <div>
+                            <p style="color: #6b7280; font-size: 0.85rem;">Taille totale</p>
+                            <p style="font-size: 1.5rem; font-weight: bold; color: #f59e0b;" id="statSize">0 B</p>
+                        </div>
+                        <div>
+                            <p style="color: #6b7280; font-size: 0.85rem;">Temps</p>
+                            <p style="font-size: 1.5rem; font-weight: bold; color: #8b5cf6;" id="statTime">0s</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal pour l'historique -->
+    <div class="modal" id="historyModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Historique des générations</h3>
+                <button class="modal-close" id="closeHistoryModal">&times;</button>
+            </div>
+            <div id="modalHistoryList">
+                <!-- L'historique sera chargé ici -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal pour l'agrandissement de l'aperçu -->
+    <div class="modal" id="previewModal">
+        <div class="modal-content" style="max-width: 800px;">
+            <div class="modal-header">
+                <h3>Aperçu du fichier</h3>
+                <button class="modal-close" id="closePreviewModal">&times;</button>
+            </div>
+            <pre id="modalPreviewContent" style="background: #1f2937; color: #f3f4f6; padding: 1rem; border-radius: 0.5rem; max-height: 60vh; overflow-y: auto;"></pre>
+        </div>
+    </div>
+
+    <!-- Toast pour les notifications -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Chargement du script -->
+    <script src="/static/app.js"></script>
+    <script>
+        // Raccourcis clavier
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey || e.metaKey) {
+                switch(e.key) {
+                    case 'o':
+                    case 'O':
+                        e.preventDefault();
+                        document.getElementById('selectFileBtn').click();
+                        break;
+                    case 'g':
+                    case 'G':
+                        e.preventDefault();
+                        if (!document.getElementById('generateBtn').disabled) {
+                            document.getElementById('generateBtn').click();
+                        }
+                        break;
+                    case 'p':
+                    case 'P':
+                        e.preventDefault();
+                        if (!document.getElementById('previewBtn').disabled) {
+                            document.getElementById('previewBtn').click();
+                        }
+                        break;
+                    case 'v':
+                    case 'V':
+                        e.preventDefault();
+                        if (!document.getElementById('validateBtn').disabled) {
+                            document.getElementById('validateBtn').click();
+                        }
+                        break;
+                }
+            }
+        });
+
+        // Gestion des chemins suggérés
+        document.querySelectorAll('.suggest-path').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.getElementById('folderPath').value = btn.dataset.path;
+                document.getElementById('folderPath').dispatchEvent(new Event('input'));
+            });
+        });
+
+        // Validation de la structure
+        document.getElementById('validateBtn').addEventListener('click', async () => {
+            const generator = window.generator;
+            if (generator && generator.currentStructure) {
+                generator.showLoading();
+                setTimeout(() => {
+                    const issues = generator.validateStructure();
+                    generator.hideLoading();
+                    generator.showToast(issues.length === 0 ? '✅ Structure valide' : `⚠️ ${issues.length} problème(s) détecté(s)`, issues.length === 0 ? 'success' : 'error');
+                }, 500);
+            }
+        });
+
+        // Historique
+        document.getElementById('historyBtn').addEventListener('click', () => {
+            document.getElementById('historyModal').classList.add('show');
+        });
+
+        document.getElementById('closeHistoryModal').addEventListener('click', () => {
+            document.getElementById('historyModal').classList.remove('show');
+        });
+
+        document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+            if (confirm('Voulez-vous vraiment effacer tout l\'historique ?')) {
+                localStorage.removeItem('generationHistory');
+                document.getElementById('historyList').innerHTML = '<p style="color: #9ca3af; text-align: center; padding: 1rem;">Aucun historique</p>';
+            }
+        });
+
+        // Agrandissement de l'aperçu
+        document.getElementById('expandPreviewBtn').addEventListener('click', () => {
+            const content = document.getElementById('fileContent').textContent;
+            document.getElementById('modalPreviewContent').textContent = content;
+            document.getElementById('previewModal').classList.add('show');
+        });
+
+        document.getElementById('closePreviewModal').addEventListener('click', () => {
+            document.getElementById('previewModal').classList.remove('show');
+        });
+
+        // Copie de l'aperçu
+        document.getElementById('copyPreviewBtn').addEventListener('click', () => {
+            const content = document.getElementById('fileContent').textContent;
+            navigator.clipboard.writeText(content).then(() => {
+                alert('Contenu copié !');
+            });
+        });
+
+        // Sauvegarde du résultat
+        document.getElementById('saveOutputBtn').addEventListener('click', () => {
+            const content = document.getElementById('output').textContent;
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `resultat_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        // Fermeture des modals en cliquant en dehors
+        window.addEventListener('click', (e) => {
+            if (e.target.classList.contains('modal')) {
+                e.target.classList.remove('show');
+            }
+        });
+
+        // Initialisation du générateur
+        document.addEventListener('DOMContentLoaded', () => {
+            window.generator = new FileStructureGenerator();
+        });
+    </script>
+</body>
+</html>
